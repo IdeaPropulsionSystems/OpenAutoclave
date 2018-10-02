@@ -1,3 +1,8 @@
+
+//OpenAutoclave Software version 181001.1 by David Hartkop
+//Creative Commons Attribution ShareAlike 3.0 License
+//https://creativecommons.org/licenses/by-sa/3.0/
+
 //Include Libraries_________________________________________________________________
 
 //Library for Thermocouple
@@ -29,9 +34,9 @@ int vccPin = 11;
 int gndPin = 12;
 
 //pin definitions for MOSFET power transistor
-int MOSFET_gndPin = A1;
+int MOSFET_gndPin = A3;
 int MOSFET_vccPin = A2;
-int MOSFET_sigPin = A3;
+int MOSFET_sigPin = A1;
 
 //pin definitions for LCD 
 #define I2C_ADDR    0x3F // <<----- Add your address here.  Find it from I2C Scanner
@@ -44,7 +49,7 @@ int MOSFET_sigPin = A3;
 #define D6_pin  6
 #define D7_pin  7
 
-//Declare global variables_________________________________________________________________
+//Declare variables_________________________________________________________________
 
 //serial communication variables
 int incomingByte;
@@ -54,7 +59,8 @@ int streamingState=0;
 unsigned long currentTimeRead = 0;
 unsigned long logTimeStamp = 0;
 unsigned long streamTimeStamp = 0;
-
+unsigned long thermostatTimeStamp = 0;
+unsigned long countdownTimeStamp = 0; 
 
 //data logging variables
 unsigned int tempRead=0; //16 bit number representing a temperature read from the thermocouple
@@ -62,7 +68,18 @@ int addr = 0;
 int addrFree = 0;//the address of the first free byte of EEPROM memory, checking up from addr=0.
 unsigned int recalledData=0; //variable into which the tempearature data on the EEPROM can be read
 
+//temperature control variables                      
+int setPoint_upper = 346;
+int setPoint_lower = 345;
+int setPoint_countdown = 340;
+int heaterState = 0;
+    
+//countdown variable
+//30 min = 1800 sec, use 340˚F
+//60 min = 3600 sec, use 320˚F
+//150 min = 9000 sec, use 300˚F
 
+unsigned long countDownSec = 3600; 
 
 
 //Functions Defined_________________________________________________________________
@@ -76,7 +93,14 @@ LiquidCrystal_I2C  lcd(I2C_ADDR,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin
 void findFreeMemoryFunction(){ //locates first free byte of EEPROM memory and write the address to addrFree variable
 for (unsigned int i=0; EEPROM.read(i)>0; i++){
   addrFree=i;
+
+  if (i == EEPROM.length()){ //If there is no free space found in the entire EEPROM, this subroutine erases all bytes to 0.
+    for (unsigned int i = 0 ; i < EEPROM.length() ; i++) {
+        EEPROM.write(i, 0);}
+  }
  }
+
+  
 
 //Write start marker "13" into first byte, then sets addrFree forward one byte; ready to log data! 
 EEPROM.write(addrFree,13);
@@ -119,7 +143,7 @@ void downloadMemoryFunction(){
 void displayInfoFunction(){
   Serial.println("*******************************************************");
   Serial.println("* Open Source Autoclave Controller                    *");
-  Serial.println("* Build No.180505.1                                   *");
+  Serial.println("* Build No.181001.1                                   *");
   Serial.println("* written by David Hartkop, 2018                      *");
   Serial.println("* Distributed freely for use, sale, and modification  *");
   Serial.println("* by Idea Propulsion Systems LLC                      *");
@@ -136,33 +160,91 @@ void streamDataFunction(){
 }
 
 void logDataFunction(){
+if (currentTimeRead - logTimeStamp >= 60000){ //<-This number is the delay between logged samples in ms
+  
       tempRead =   thermocouple.readCelsius(); //read thermocouple into tempRead varialbe
        EEPROM.write(addrFree, tempRead); //store byte in the EEPROM memory
         addrFree++;
   logTimeStamp = currentTimeRead;
+  }
 }
 
 void thermostatFunction(){
-  
-}
 
-void timetempIntegratorFunction(){
+if (currentTimeRead - thermostatTimeStamp >= 4000){ //<-This number is the delay between thermostat samples in ms
+  tempRead = thermocouple.readFahrenheit(); //read thermocouple into tempRead varialbe
+  if (heaterState == 1 && tempRead >= setPoint_upper){ //temp has reached upper setpoint, turn off the heater
+    heaterState = 0;
+  }
+
+  if (heaterState == 0 && tempRead <= setPoint_lower){ //temp has fallen to the lower setpoint, turn heater back on
+    heaterState = 1;
+  }
   
+  if (heaterState == 0){
+   digitalWrite(MOSFET_sigPin, HIGH); //Writing HIGH means you are cutting power to the heaters.
+  }
+
+  else {
+   digitalWrite(MOSFET_sigPin, LOW);//Writing LOW means you are sending power to the heaters.
+  } 
+
+  thermostatTimeStamp = currentTimeRead;
+  }
 }
 
 
 void LCDUpdateFunction(){
+
+    //Display the temperature
+    lcd.setCursor(0,0);
+    lcd.print(thermocouple.readFahrenheit());  
+    lcd.print("F");  
+
+    //calculate min & sec values
+    int minutes = (countDownSec/(60));
+    int seconds = (countDownSec)-minutes*60;
+
+    //display min & sec remaining on timer
+    lcd.setCursor(0,1);
+    lcd.print(minutes);
+    lcd.print(" min ");
+    lcd.print(seconds);
+    lcd.print(" sec "); 
+
+  //pause the timer and show "Temp Low" if temp is below the set point
+  if (thermocouple.readFahrenheit()<setPoint_countdown){
+    lcd.setCursor(8,0);
+    lcd.print("Temp Low");
+    delay (500);
+    lcd.setCursor(8,0);
+    lcd.print("        ");
+    delay (250);
+  }
+
+  else{ //allows the timer to run
+
+  if (currentTimeRead - countdownTimeStamp >= 1000){ 
+    countDownSec = countDownSec-1;
+    
+    if (countDownSec < 1){
+   
+    while(true){ //while loops the 'done' alert sound and keeps heaters disabled.
+    digitalWrite(MOSFET_sigPin, HIGH); //Writing HIGH means you are cutting power to the heaters.
+    lcd.setCursor(0,0);
+    lcd.print(thermocouple.readFahrenheit());
+    delay(1000);
+    lcd.setCursor(0,1);
+    lcd.print("Cycle Complete!");
+    soundsFunction(3);
+    logDataFunction();
+      }
+     }
+  countdownTimeStamp = currentTimeRead;
+    }
   
- lcd.setCursor(0,0);
- lcd.print(thermocouple.readCelsius());
- lcd.print("C     ");  
- //lcd.setCursor(0,1);
- lcd.print(thermocouple.readFahrenheit());  
- lcd.print("F");   
-  
+  }
 }
-
-
 void soundsFunction(int x){
   int freq = 0;
   int tonedelay = 50;
@@ -208,6 +290,7 @@ void soundsFunction(int x){
     tone(speakerPin2,880);
     delay(200);
     noTone(speakerPin2); 
+    delay(500);
   }
 
   if (x==4){
@@ -228,6 +311,8 @@ void soundsFunction(int x){
 
 void setup() {
 
+
+
 //initialize speaker pinmodes
   pinMode(speakerPin1, OUTPUT); digitalWrite(speakerPin1, LOW);
   pinMode(speakerPin2, OUTPUT); digitalWrite(speakerPin2, LOW);
@@ -241,14 +326,15 @@ void setup() {
   pinMode(gndPin, OUTPUT); digitalWrite(gndPin, LOW);
 
 //initialize pins for MOSFET module pinmodes
-  pinMode(MOSFET_gndPin, OUTPUT); digitalWrite(A1, LOW); 
-  pinMode(MOSFET_vccPin, OUTPUT); digitalWrite(A2, HIGH); 
-  pinMode(MOSFET_sigPin, OUTPUT); digitalWrite(A3, HIGH); 
+  pinMode(MOSFET_gndPin, OUTPUT); digitalWrite(MOSFET_gndPin, LOW); 
+  pinMode(MOSFET_vccPin, OUTPUT); digitalWrite(MOSFET_vccPin, HIGH); 
+  pinMode(MOSFET_sigPin, OUTPUT); digitalWrite(MOSFET_sigPin, LOW); //Set sigPin HIGH to cut power to heaters. MOSFET activates a relay that opens the circuit...
 
 // initialzie LCD
   lcd.begin (16,2); //  <<----- My LCD was 16x2
   lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE); // Switch on the backlight
   lcd.setBacklight(HIGH);  
+
 
 //initialize serial communication
   Serial.begin(9600);
@@ -262,16 +348,23 @@ findFreeMemoryFunction();
 //play a happy start-up sound!
 soundsFunction(1);
 
+
+
 }
 
 //Main Loop Begin_________________________________________________________________
 
 void loop() {
+delay(500);//half second delay to keep thermocouple reads stable
   
-  currentTimeRead = millis(); //Update the currentTimeRead variable
+currentTimeRead = millis(); //Update the currentTimeRead variable
+
+incomingByte = (Serial.read()); //reads serial data in the register into a program variable
+
+//LCD UPDATE - writes relevant information to the LCD
+LCDUpdateFunction();
 
 
-  incomingByte = (Serial.read()); //reads serial data in the register into a program variable
 
 //ERASE ALL EEPROM BYTES TO ZERO
 if (incomingByte==101){ //101="e"
@@ -307,17 +400,13 @@ if (incomingByte==101){ //101="e"
     }
 
 //DATA LOGGER - Logs temperature readings to EEPROM
-if (currentTimeRead - logTimeStamp >= 60000){ //<-This number is the delay between logged samples in ms
 logDataFunction();
-}
+
 
 //THERMOSTAT - Keeps temperature from crossing set point and burning up autoclave tape & instrument wrappings
 thermostatFunction();
 
-//LCD UPDATE - writes relevant information to the LCD
-LCDUpdateFunction();
 
 
 
- delay(500);//delay to keep thermocouple reads stable
 }
