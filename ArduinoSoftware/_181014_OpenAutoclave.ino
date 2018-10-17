@@ -1,7 +1,13 @@
 
-//OpenAutoclave Software version 181001.1 by David Hartkop
+//OpenAutoclave Software version 181014.1 by David Hartkop
 //Creative Commons Attribution ShareAlike 3.0 License
 //https://creativecommons.org/licenses/by-sa/3.0/
+
+/* __________CONFIGURATION VARIABES____________*/
+int setPoint_countdown = 170; //degrees Celsius. The Autoclave will reach and hold this temp. for the exposure time
+int exposureTime = 120; //minutes for which the autoclave will be held at the SetPoint_countdown temperature
+int displayUnits = 0; // enter 0 for Celsius, enter 1 for Fahrenheit display on the LCD
+
 
 //Include Libraries_________________________________________________________________
 
@@ -69,17 +75,12 @@ int addrFree = 0;//the address of the first free byte of EEPROM memory, checking
 unsigned int recalledData=0; //variable into which the tempearature data on the EEPROM can be read
 
 //temperature control variables                      
-int setPoint_upper = 346;
-int setPoint_lower = 345;
-int setPoint_countdown = 340;
+int setPoint_upper = setPoint_countdown + 3;
+int setPoint_lower = setPoint_countdown + 2;
 int heaterState = 0;
     
 //countdown variable
-//30 min = 1800 sec, use 340˚F
-//60 min = 3600 sec, use 320˚F
-//150 min = 9000 sec, use 300˚F
-
-unsigned long countDownSec = 3600; 
+unsigned long countDownSec = exposureTime * 60; //converts minutes exposure time to seconds of countdown
 
 
 //Functions Defined_________________________________________________________________
@@ -143,7 +144,7 @@ void downloadMemoryFunction(){
 void displayInfoFunction(){
   Serial.println("*******************************************************");
   Serial.println("* Open Source Autoclave Controller                    *");
-  Serial.println("* Build No.181001.1                                   *");
+  Serial.println("* Build No.181014.1                                   *");
   Serial.println("* written by David Hartkop, 2018                      *");
   Serial.println("* Distributed freely for use, sale, and modification  *");
   Serial.println("* by Idea Propulsion Systems LLC                      *");
@@ -172,7 +173,7 @@ if (currentTimeRead - logTimeStamp >= 60000){ //<-This number is the delay betwe
 void thermostatFunction(){
 
 if (currentTimeRead - thermostatTimeStamp >= 4000){ //<-This number is the delay between thermostat samples in ms
-  tempRead = thermocouple.readFahrenheit(); //read thermocouple into tempRead varialbe
+  tempRead = thermocouple.readCelsius(); //read thermocouple into tempRead varialbe
   if (heaterState == 1 && tempRead >= setPoint_upper){ //temp has reached upper setpoint, turn off the heater
     heaterState = 0;
   }
@@ -198,8 +199,15 @@ void LCDUpdateFunction(){
 
     //Display the temperature
     lcd.setCursor(0,0);
-    lcd.print(thermocouple.readFahrenheit());  
-    lcd.print("F");  
+
+  if (displayUnits == 0){
+    lcd.print(thermocouple.readCelsius());
+    lcd.print(" C");
+  }
+  else{
+    lcd.print(thermocouple.readFahrenheit());
+    lcd.print(" F");
+  }
 
     //calculate min & sec values
     int minutes = (countDownSec/(60));
@@ -212,13 +220,23 @@ void LCDUpdateFunction(){
     lcd.print(seconds);
     lcd.print(" sec "); 
 
-  //pause the timer and show "Temp Low" if temp is below the set point
+  //pause the timer and show "Heating" message if temp is below the set point
   if (thermocouple.readFahrenheit()<setPoint_countdown){
     lcd.setCursor(8,0);
-    lcd.print("Temp Low");
+    lcd.print("Heating ");
     delay (500);
     lcd.setCursor(8,0);
-    lcd.print("        ");
+    lcd.print("to ");
+      if (displayUnits == 0){
+        lcd.print(setPoint_countdown);
+        lcd.print(" C");
+        }
+      else{
+        lcd.print((setPoint_countdown*(1.8))+32,0);
+        lcd.print(" F");
+  }
+
+    
     delay (250);
   }
 
@@ -306,6 +324,10 @@ void soundsFunction(int x){
 
 }
 
+void softReset(){ //Function jumps thread to start of program, restarting all functions.
+asm volatile ("  jmp 0");
+}
+
 
 //Setup_________________________________________________________________
 
@@ -361,9 +383,8 @@ currentTimeRead = millis(); //Update the currentTimeRead variable
 
 incomingByte = (Serial.read()); //reads serial data in the register into a program variable
 
-//LCD UPDATE - writes relevant information to the LCD
+//LCD UPDATE - scans inputs and writes relevant information to the LCD
 LCDUpdateFunction();
-
 
 
 //ERASE ALL EEPROM BYTES TO ZERO
@@ -407,6 +428,18 @@ logDataFunction();
 thermostatFunction();
 
 
+//RESET BUTTON - Hold down the button for 5 seconds and the OpenAutoclave software jumps to line 0.
+while(digitalRead(buttonPin1) == LOW){ 
+lcd.setCursor(0,1);
+lcd.print("Hold to RESET");
+
+  if(millis() - currentTimeRead > 5000){ 
+     soundsFunction(2);
+     softReset();
+  }
+
+
+}
 
 
 }
