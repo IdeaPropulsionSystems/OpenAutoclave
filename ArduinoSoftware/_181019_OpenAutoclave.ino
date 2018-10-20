@@ -1,12 +1,12 @@
 
-//OpenAutoclave Software version 181014.1 by David Hartkop
+//OpenAutoclave Software version 181019.1 by David Hartkop
 //Creative Commons Attribution ShareAlike 3.0 License
 //https://creativecommons.org/licenses/by-sa/3.0/
 
 /* __________CONFIGURATION VARIABES____________*/
-int setPoint_countdown = 170; //degrees Celsius. The Autoclave will reach and hold this temp. for the exposure time
-int exposureTime = 120; //minutes for which the autoclave will be held at the SetPoint_countdown temperature
-int displayUnits = 0; // enter 0 for Celsius, enter 1 for Fahrenheit display on the LCD
+int setPoint_countdown = 160; //DEFAULT 160 degrees Celsius. The Autoclave will reach and hold this temp. for the exposure time  
+int exposureTime = 120; //DEFAULT 120 minutes for which the autoclave will be held at the SetPoint_countdown temperature
+int displayUnits = 0; // enter 0 for Celsius, DEFAULT 0 enter 1 for Fahrenheit display on the LCD
 
 
 //Include Libraries_________________________________________________________________
@@ -26,7 +26,7 @@ int displayUnits = 0; // enter 0 for Celsius, enter 1 for Fahrenheit display on 
 
 //pin definitions for speaker
 int speakerPin1 = 3;
-int speakerPin2 = 4;
+int speakerPin2 = 4; 
 
 //pin definitions for PushButton
 int buttonPin1 = 5;
@@ -40,9 +40,9 @@ int vccPin = 11;
 int gndPin = 12;
 
 //pin definitions for MOSFET power transistor
-int MOSFET_gndPin = A3;
+int MOSFET_gndPin = A1;
 int MOSFET_vccPin = A2;
-int MOSFET_sigPin = A1;
+int MOSFET_sigPin = A3;
 
 //pin definitions for LCD 
 #define I2C_ADDR    0x3F // <<----- Add your address here.  Find it from I2C Scanner
@@ -59,12 +59,11 @@ int MOSFET_sigPin = A1;
 
 //serial communication variables
 int incomingByte;
-int streamingState=0;
+
 
 //timing variables
 unsigned long currentTimeRead = 0;
 unsigned long logTimeStamp = 0;
-unsigned long streamTimeStamp = 0;
 unsigned long thermostatTimeStamp = 0;
 unsigned long countdownTimeStamp = 0; 
 
@@ -90,6 +89,18 @@ MAX6675 thermocouple(thermoCLK, thermoCS, thermoDO);// function for thermocouple
 
 LiquidCrystal_I2C  lcd(I2C_ADDR,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin); //function for the LCD defined
 
+void displayTempFunction(int x){
+
+if (x == 0){
+    lcd.print(thermocouple.readCelsius());
+    lcd.print("C");
+  }
+  else{
+    lcd.print(thermocouple.readFahrenheit());
+    lcd.print("F");
+  }
+  
+}
 
 void findFreeMemoryFunction(){ //locates first free byte of EEPROM memory and write the address to addrFree variable
 for (unsigned int i=0; EEPROM.read(i)>0; i++){
@@ -111,11 +122,6 @@ addrFree=addrFree+1;
 
 
 void eraseMemoryFunction(){
-  Serial.println("             ERASE EEPROM DATA: Are you SURE?   y / n");
-      while (Serial.available()==0){}
-      incomingByte = (Serial.read());
-      
-       if (incomingByte == 121) {
         Serial.println("                          OK... Erasing All Data...");
         for (int i = 0 ; i < EEPROM.length() ; i++) {
         EEPROM.write(i, 0);
@@ -124,12 +130,8 @@ void eraseMemoryFunction(){
         
        incomingByte = 1;
        }
-        if (incomingByte!=121 && incomingByte!=1) {
-        Serial.println("                          Erase CANCELLED.");
-        Serial.println("");
-        incomingByte = 1;
-        }
-}
+       
+
 
 void downloadMemoryFunction(){
     addr = 0;
@@ -144,21 +146,13 @@ void downloadMemoryFunction(){
 void displayInfoFunction(){
   Serial.println("*******************************************************");
   Serial.println("* Open Source Autoclave Controller                    *");
-  Serial.println("* Build No.181014.1                                   *");
+  Serial.println("* Build No.181019.1                                   *");
   Serial.println("* written by David Hartkop, 2018                      *");
   Serial.println("* Distributed freely for use, sale, and modification  *");
   Serial.println("* by Idea Propulsion Systems LLC                      *");
   Serial.println("*******************************************************");
 }
 
-void streamDataFunction(){
-  Serial.print(thermocouple.readCelsius());
-  Serial.print(" C ");
-  Serial.print(thermocouple.readFahrenheit());
-  Serial.println(" F");
-  streamTimeStamp = currentTimeRead;
-  incomingByte=0;
-}
 
 void logDataFunction(){
 if (currentTimeRead - logTimeStamp >= 60000){ //<-This number is the delay between logged samples in ms
@@ -170,7 +164,7 @@ if (currentTimeRead - logTimeStamp >= 60000){ //<-This number is the delay betwe
   }
 }
 
-void thermostatFunction(){
+void thermostatFunction(){ //Simple hysteresis control. No frills. It is more relay-friendly than a PID controller.
 
 if (currentTimeRead - thermostatTimeStamp >= 4000){ //<-This number is the delay between thermostat samples in ms
   tempRead = thermocouple.readCelsius(); //read thermocouple into tempRead varialbe
@@ -200,14 +194,7 @@ void LCDUpdateFunction(){
     //Display the temperature
     lcd.setCursor(0,0);
 
-  if (displayUnits == 0){
-    lcd.print(thermocouple.readCelsius());
-    lcd.print(" C");
-  }
-  else{
-    lcd.print(thermocouple.readFahrenheit());
-    lcd.print(" F");
-  }
+displayTempFunction(displayUnits);
 
     //calculate min & sec values
     int minutes = (countDownSec/(60));
@@ -221,7 +208,7 @@ void LCDUpdateFunction(){
     lcd.print(" sec "); 
 
   //pause the timer and show "Heating" message if temp is below the set point
-  if (thermocouple.readFahrenheit()<setPoint_countdown){
+  if (thermocouple.readCelsius()<setPoint_countdown){
     lcd.setCursor(8,0);
     lcd.print("Heating ");
     delay (500);
@@ -229,11 +216,11 @@ void LCDUpdateFunction(){
     lcd.print("to ");
       if (displayUnits == 0){
         lcd.print(setPoint_countdown);
-        lcd.print(" C");
+        lcd.print("C");
         }
       else{
         lcd.print((setPoint_countdown*(1.8))+32,0);
-        lcd.print(" F");
+        lcd.print("F");
   }
 
     
@@ -241,7 +228,8 @@ void LCDUpdateFunction(){
   }
 
   else{ //allows the timer to run
-
+    lcd.setCursor(8,0);
+    lcd.print("        ");
   if (currentTimeRead - countdownTimeStamp >= 1000){ 
     countDownSec = countDownSec-1;
     
@@ -250,7 +238,7 @@ void LCDUpdateFunction(){
     while(true){ //while loops the 'done' alert sound and keeps heaters disabled.
     digitalWrite(MOSFET_sigPin, HIGH); //Writing HIGH means you are cutting power to the heaters.
     lcd.setCursor(0,0);
-    lcd.print(thermocouple.readFahrenheit());
+    displayTempFunction(displayUnits);
     delay(1000);
     lcd.setCursor(0,1);
     lcd.print("Cycle Complete!");
@@ -263,6 +251,8 @@ void LCDUpdateFunction(){
   
   }
 }
+
+
 void soundsFunction(int x){
   int freq = 0;
   int tonedelay = 50;
@@ -362,7 +352,7 @@ void setup() {
   Serial.begin(9600);
   delay(2000); //allow Serial interface to stabilize
   Serial.println();
-  Serial.println(" Enter d=download EEPROM, e=erase EEPROM, s=stream live data, i=info");
+Serial.println(" Enter d=download EEPROM, *=erase EEPROM, t=current temp read, i=info");
 
 //find & mark a location to start logging data to EEPROM
 findFreeMemoryFunction();
@@ -388,7 +378,7 @@ LCDUpdateFunction();
 
 
 //ERASE ALL EEPROM BYTES TO ZERO
-if (incomingByte==101){ //101="e"
+if (incomingByte==42){ //42="*"
   eraseMemoryFunction();
     }
 
@@ -402,24 +392,24 @@ if (incomingByte==101){ //101="e"
      displayInfoFunction();
     }
 
-//START LIVE-STREAMING TEMPEARATURE DATA TO SERIAL MONITOR
-   if (incomingByte == 115 || (streamingState ==1)){  //115 = "s"
-      streamingState = 1;
-      if (currentTimeRead - streamTimeStamp >= 1000){ //<-This number is the data stream delay in ms
-        streamDataFunction();
-        }     
-    }
-    
-//STOP LIVE-STREAMING TEMPEARATURE DATA TO SERIAL MONITOR
-    if (incomingByte == 115 && streamingState ==1){  //115 = "s"
-      streamingState = 0;
-    }
- 
-//HANDLES EXCEPTIONS TO SERIAL INPUT BY DISPLAYING MENU OPTIONS
- if(incomingByte > 0){  
-      Serial.println(" Enter d=download EEPROM, e=erase EEPROM, s=stream live data, i=info");
+
+//CURRENT TEMP READ
+   if (incomingByte == 116){  //116 = "t"
+      Serial.print(thermocouple.readCelsius());
+  Serial.print("˚C ");
+  Serial.print(thermocouple.readFahrenheit());
+  Serial.print("˚F Timestamp: ");
+  Serial.println(currentTimeRead);
+ incomingByte=0;
     }
 
+//HANDLES EXCEPTIONS TO SERIAL INPUT BY DISPLAYING MENU OPTIONS
+ if(incomingByte > 11){  
+      Serial.println(" Enter d=download EEPROM, *=erase EEPROM, t=current temp read, i=info");
+    }
+
+
+    
 //DATA LOGGER - Logs temperature readings to EEPROM
 logDataFunction();
 
