@@ -1,11 +1,11 @@
 
-//OpenAutoclave Software version 181019.1 by David Hartkop
+//OpenAutoclave Software version 181031.1 by David Hartkop
 //Creative Commons Attribution ShareAlike 3.0 License
 //https://creativecommons.org/licenses/by-sa/3.0/
 
 /* __________CONFIGURATION VARIABES____________*/
-int setPoint_countdown = 160; //DEFAULT 160 degrees Celsius. The Autoclave will reach and hold this temp. for the exposure time  
-int exposureTime = 120; //DEFAULT 120 minutes for which the autoclave will be held at the SetPoint_countdown temperature
+int setPoint_heater = 160; //DEFAULT 160 degrees Celsius. The Autoclave will reach and hold this temp. for the exposure time  
+int exposureTime = 120; //DEFAULT 120 minutes for which the autoclave will be held at the SetPoint_heater temperature
 int displayUnits = 0; // enter 0 for Celsius, DEFAULT 0 enter 1 for Fahrenheit display on the LCD
 
 
@@ -74,8 +74,8 @@ int addrFree = 0;//the address of the first free byte of EEPROM memory, checking
 unsigned int recalledData=0; //variable into which the tempearature data on the EEPROM can be read
 
 //temperature control variables                      
-int setPoint_upper = setPoint_countdown + 3;
-int setPoint_lower = setPoint_countdown + 2;
+int setPoint_upper = setPoint_heater + 3;
+int setPoint_lower = setPoint_heater + 2;
 int heaterState = 0;
     
 //countdown variable
@@ -146,7 +146,7 @@ void downloadMemoryFunction(){
 void displayInfoFunction(){
   Serial.println("*******************************************************");
   Serial.println("* Open Source Autoclave Controller                    *");
-  Serial.println("* Build No.181019.1                                   *");
+  Serial.println("* Build No.181031.1                                   *");
   Serial.println("* written by David Hartkop, 2018                      *");
   Serial.println("* Distributed freely for use, sale, and modification  *");
   Serial.println("* by Idea Propulsion Systems LLC                      *");
@@ -208,18 +208,18 @@ displayTempFunction(displayUnits);
     lcd.print(" sec "); 
 
   //pause the timer and show "Heating" message if temp is below the set point
-  if (thermocouple.readCelsius()<setPoint_countdown){
+  if (thermocouple.readCelsius()<setPoint_heater){
     lcd.setCursor(8,0);
     lcd.print("Heating ");
     delay (500);
     lcd.setCursor(8,0);
     lcd.print("to ");
       if (displayUnits == 0){
-        lcd.print(setPoint_countdown);
+        lcd.print(setPoint_heater);
         lcd.print("C");
         }
       else{
-        lcd.print((setPoint_countdown*(1.8))+32,0);
+        lcd.print((setPoint_heater*(1.8))+32,0);
         lcd.print("F");
   }
 
