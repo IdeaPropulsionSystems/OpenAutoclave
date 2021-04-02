@@ -16,7 +16,6 @@ int displayUnits = 0; // enter 0 for Celsius, DEFAULT 0 enter 1 for Fahrenheit d
 
 //Libraries for 1602 i2c LCD
 #include <Wire.h>
-#include <LCD.h>
 #include <LiquidCrystal_I2C.h>
 
 //Libraries for file management
